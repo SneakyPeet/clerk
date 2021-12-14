@@ -155,21 +155,22 @@
 
 (defn show!
   "Evaluates the Clojure source in `file` and makes the webserver show it."
-  [file]
-  (if config/*in-clerk*
-    ::ignored
-    (try
-      (reset! !last-file file)
-      (let [doc (parse-file file)
-            results-last-run (meta @webserver/!doc)
-            {:keys [result time-ms]} (time-ms (+eval-results results-last-run (hashing/hash file) doc))]
-        ;; TODO diff to avoid flickering
-        #_(webserver/update-doc! doc)
-        (println (str "Clerk evaluated '" file "' in " time-ms "ms."))
-        (webserver/update-doc! result))
-      (catch Exception e
-        (webserver/show-error! e)
-        (throw e)))))
+  ([] (show! @!last-file))
+  ([file]
+   (if config/*in-clerk*
+     ::ignored
+     (try
+       (reset! !last-file file)
+       (let [doc (parse-file file)
+             results-last-run (meta @webserver/!doc)
+             {:keys [result time-ms]} (time-ms (+eval-results results-last-run (hashing/hash file) doc))]
+         ;; TODO diff to avoid flickering
+         #_(webserver/update-doc! doc)
+         (println (str "Clerk evaluated '" file "' in " time-ms "ms."))
+         (webserver/update-doc! result))
+       (catch Exception e
+         (webserver/show-error! e)
+         (throw e))))))
 
 (defn supported-file?
   "Returns whether `path` points to a file that should be shown."
