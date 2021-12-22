@@ -130,30 +130,42 @@
 (def code-tags
   #{:deref :map :meta :list :quote :reader-macro :set :token :var :vector})
 
+
 (defn parse-clojure-file
   ([file] (parse-clojure-file {} file))
   ([{:as _opts :keys [markdown?]} file]
-   (loop [{:as state :keys [nodes visibility]} {:nodes (:children (p/parse-file-all file))
-                                                :doc []}]
+   (loop [{:as state :keys [blocks nodes visibility]} {:nodes (:children (p/parse-file-all file))
+                                                       :blocks []}]
      (if-let [node (first nodes)]
        (recur (cond
                 (code-tags (n/tag node))
                 (cond-> (-> state
                             (update :nodes rest)
-                            (update :doc (fnil conj []) (cond-> {:type :code :text (n/string node)}
-                                                          (and (not visibility) (-> node n/string read-string ns?))
-                                                          (assoc :ns? true))))
+                            (update :blocks (fnil conj []) (cond-> {:type :code :text (n/string node)}
+                                                             (and (not visibility) (-> node n/string read-string ns?))
+                                                             (assoc :ns? true))))
                   (not visibility)
                   (assoc :visibility (-> node n/string read-string ->doc-visibility)))
 
                 (and markdown? (n/comment? node))
                 (-> state
                     (assoc :nodes (drop-while n/comment? nodes))
-                    (update :doc conj {:type :markdown :doc (markdown/parse (apply str (map (comp remove-leading-semicolons n/string)
-                                                                                            (take-while n/comment? nodes))))}))
+                    (update :blocks conj {:type :markdown :text (apply str (map (comp remove-leading-semicolons n/string)
+                                                                                (take-while n/comment? nodes)))}))
                 :else
                 (update state :nodes rest)))
-       (select-keys state [:doc :visibility])))))
+
+       (merge (select-keys state [:blocks :visibility])
+              (when markdown? (let [toc (->> blocks
+                                             (filter (comp #{:markdown} :type))
+                                             (map :text)
+                                             (apply str)
+                                             markdown/parse
+                                             :toc)]
+                                {:toc toc :title (get-in toc [:content 0 :title])})) )))))
+
+#_(parse-clojure-file {:markdown? true} "notebooks/how_clerk_works.clj")
+
 
 (defn code-cell? [{:as node :keys [type]}]
   (and (= :code type) (contains? node :info)))
@@ -161,34 +173,38 @@
 (defn parse-markdown-cell [state markdown-code-cell]
   (reduce (fn [{:as state :keys [visibility]} node]
             (-> state
-                (update :doc conj (cond-> {:type :code :text (n/string node)}
-                                    (and (not visibility) (-> node n/string read-string ns?)) (assoc :ns? true)))
+                (update :blocks conj (cond-> {:type :code :text (n/string node)}
+                                       (and (not visibility) (-> node n/string read-string ns?)) (assoc :ns? true)))
                 (cond-> (not visibility) (assoc :visibility (-> node n/string read-string ->doc-visibility)))))
           state
           (-> markdown-code-cell markdown.transform/->text str/trim p/parse-string-all :children
               (->> (filter (comp code-tags n/tag))))))
 
 (defn parse-markdown-file [{:keys [markdown?]} file]
-  (loop [{:as state :keys [nodes] ::keys [md-slice]} {:doc [] ::md-slice [] :nodes (:content (markdown/parse (slurp file)))}]
-    (if-some [node (first nodes)]
-      (recur
-       (if (code-cell? node)
-         (cond-> state
-           (seq md-slice)
-           (-> #_state
-               (update :doc conj {:type :markdown :doc {:type :doc :content md-slice}})
-               (assoc ::md-slice []))
+  (let [{:keys [content toc]} (markdown/parse (slurp file))]
+    (loop [{:as state :keys [nodes] ::keys [md-slice]} {:blocks [] ::md-slice [] :nodes content}]
+      (if-some [node (first nodes)]
+        (recur
+         (if (code-cell? node)
+           (cond-> state
+             (seq md-slice)
+             (-> #_state
+                 (update :blocks conj {:type :markdown :doc {:type :doc :content md-slice}})
+                 (assoc ::md-slice []))
 
-           :always
-           (-> #_state
-               (parse-markdown-cell node)
-               (update :nodes rest)))
+             :always
+             (-> #_state
+                 (parse-markdown-cell node)
+                 (update :nodes rest)))
 
-         (-> state (update :nodes rest) (cond-> markdown? (update ::md-slice conj node)))))
+           (-> state (update :nodes rest) (cond-> markdown? (update ::md-slice conj node)))))
 
-      (-> state
-          (update :doc #(cond-> % (seq md-slice) (conj {:type :markdown :doc {:type :doc :content md-slice}})))
-          (select-keys [:doc :visibility])))))
+        (-> state
+            (update :blocks #(cond-> % (seq md-slice) (conj {:type :markdown :doc {:type :doc :content md-slice}})))
+            (select-keys [:blocks :visibility])
+            (merge (when markdown? {:toc toc :title (get-in toc [:content 0 :title])})))))))
+
+#_(parse-markdown-file {:markdown? true} "notebooks/markdown.md")
 
 (defn parse-file
   ([file] (parse-file {} file))
@@ -245,8 +261,8 @@
   ([{:as opts :keys [markdown?]} state file]
    (let [doc                 (parse-file opts file)
          state-with-document (cond-> state markdown? (assoc :doc doc))
-         code-cells (into [] (filter (comp #{:code} :type)) (:doc doc))]
-     (reduce (partial analyze-codeblock file) state-with-document code-cells))))
+         code-blocks (into [] (filter (comp #{:code} :type)) (:blocks doc))]
+     (reduce (partial analyze-codeblock file) state-with-document code-blocks))))
 
 #_(:graph (analyze-file {:markdown? true} {:graph (dep/graph)} "notebooks/elements.clj"))
 #_(analyze-file {:markdown? true} {:graph (dep/graph)} "notebooks/rule_30.clj")

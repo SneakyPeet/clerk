@@ -124,12 +124,12 @@
 
 #_(blob->result @nextjournal.clerk.webserver/!doc)
 
-(defn +eval-results [results-last-run vars->hash {:keys [doc visibility]}]
-  (let [doc (into [] (map (fn [{:as cell :keys [type text]}]
-                            (cond-> cell
-                              (= :code type)
-                              (assoc :result (read+eval-cached results-last-run vars->hash visibility text))))) doc)]
-    (with-meta doc (-> doc blob->result (assoc :ns *ns*)))))
+(defn +eval-results [results-last-run vars->hash {:as doc :keys [blocks visibility]}]
+  (let [blocks+results (into [] (map (fn [{:as cell :keys [type text]}]
+                                       (cond-> cell
+                                         (= :code type)
+                                         (assoc :result (read+eval-cached results-last-run vars->hash visibility text))))) blocks)]
+    (assoc doc :blocks (with-meta blocks+results (-> blocks+results blob->result (assoc :ns *ns*))))))
 
 #_(let [doc (+eval-results {} {} [{:type :markdown :text "# Hi"} {:type :code :text "[1]"} {:type :code :text "(+ 39 3)"}])
         blob->result (meta doc)]
@@ -166,7 +166,7 @@
         ;; TODO diff to avoid flickering
         #_(webserver/update-doc! doc)
         (println (str "Clerk evaluated '" file "' in " time-ms "ms."))
-        (webserver/update-doc! result))
+        (webserver/update-doc! (:blocks result)))
       (catch Exception e
         (webserver/show-error! e)
         (throw e)))))

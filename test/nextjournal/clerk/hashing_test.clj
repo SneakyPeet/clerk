@@ -92,26 +92,13 @@
   (is (match? (m/equals
                {:graph {:dependencies {'(ns example-notebook) set?}
                         :dependents   map?}
-                :doc {:doc [{:type :code
-                             :text "^:nextjournal.clerk/no-cache\n(ns example-notebook)"
-                             :ns?  true}
-                            {:type :markdown
-                             :doc  {:type    :doc
-                                    :content [{:type :heading
-                                               :content [{:type :text, :text "📶 Sorting"}]
-                                               :heading-level 1}]
-                                    :toc     {:type :toc
-                                              :content
-                                              [{:level 1,
-                                                :type :toc
-                                                :title "📶 Sorting"
-                                                :node
-                                                {:type :heading
-                                                 :content [{:type :text, :text "📶 Sorting"}]
-                                                 :heading-level 1}
-                                                :path [:content 0]}]}}}
-                            {:type :code
-                             :text "#{3 1 2}"}]
+                :doc {:blocks [{:type :code
+                                :text "^:nextjournal.clerk/no-cache\n(ns example-notebook)"
+                                :ns?  true}
+                               {:type :markdown
+                                :text " # 📶 Sorting\n"}
+                               {:type :code
+                                :text "#{3 1 2}"}]
                       :visibility #{:show}}
                 :->analysis-info {'(ns example-notebook) {:file "resources/tests/example_notebook.clj",
                                                           :form '(ns example-notebook),
